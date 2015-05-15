@@ -62,11 +62,12 @@ module.exports = {
             return this.status === 'queued';
         }
     },
-    status: function(id, status) {
+    status: function(id, cb) {
         Flavor.findOne(id).exec(function(err, flavor) {
             if (!err && flavor) {
-                Flavor.update(id, {status: status}).exec(function(err2, e) {
-                });
+                cb(null, flavor.status);
+            } else {
+                cb(err, null);
             }
         });
 
@@ -96,7 +97,7 @@ module.exports = {
                         profile.output = output;
 
 //                        sails.log.debug(profile);
-                        FFmpegService.process(source, [profile], function(res) {
+                        FFmpegService.process('flavor-' + flavor.id, source, [profile], function(res) {
                             sails.log.debug(res);
                         });
 

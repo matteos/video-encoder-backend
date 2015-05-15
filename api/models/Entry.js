@@ -48,18 +48,20 @@ module.exports = {
         /*
          * Methods
          */
-        update: function(cb) {
-            var id = this.id;
-            var self = this;
-            Entry.update(id, self).exec(function(err, e) {
-                if (typeof (cb) !== 'undefined') {
-                    cb(err, e);
-                } else {
-                    return e;
-                }
-
-            });
-        },
+        //DISABLED LOSES ASSOCIATIONS
+        //needs to update only fields
+//        update: function(cb) {
+//            var id = this.id;
+//            var self = this;
+//            Entry.update(id, self).exec(function(err, e) {
+//                if (typeof (cb) !== 'undefined') {
+//                    cb(err, e);
+//                } else {
+//                    return e;
+//                }
+//
+//            });
+//        },
         hasFile: function() {
             return this.type === 'file';
         },
@@ -91,11 +93,22 @@ module.exports = {
     /*
      * Static methods
      */
-    status: function(id, status) {
+    signal: function(id, status, cb) {
+        Entry.update(id, {status: status}).exec(function(err, e) {
+            if (typeof (cb) !== 'undefined') {
+                cb(err, e);
+            } else {
+                return e;
+            }
+
+        });
+    },
+    status: function(id, cb) {
         Entry.findOne(id).exec(function(err, entry) {
             if (!err && entry) {
-                Entry.update(id, {status: status}).exec(function(err2, e) {
-                });
+                cb(null, entry.status);
+            } else {
+                cb(err, null);
             }
         });
 
@@ -120,7 +133,7 @@ module.exports = {
                     FFmpegService.inspect(source, function(err3, metadata) {
                         if (!err3 && metadata) {
                             entry.metadata = metadata.id;
-                            entry.update();
+//                            entry.update(); TODO
                         }
                         sails.log.debug("return meta");
                         sails.log.debug(metadata);
@@ -140,7 +153,7 @@ module.exports = {
         Entry.get(id, function(err, entry) {
             if (!err && entry) {
 
-                sails.log.debug(entry);
+//                sails.log.debug(entry);
 
                 var source = "";
                 if (entry.hasFile() && entry.file !== null) {
@@ -150,9 +163,12 @@ module.exports = {
                     source = entry.stream.url;
                 }
 
-                if (entry.status !== 'processing' && source !== '') {
+                if (!entry.isProcessing() && source !== '') {
                     sails.log.debug("do process ");
-                    Flavor.find({entry: id}).populateAll().exec(function(err, flavors) {
+                    entry.status = 'processing';
+                    Entry.signal(entry.id, entry.status);
+
+                    Flavor.find({entry: id}).populate('preset').populate('file').populate('stream').exec(function(err, flavors) {
                         //check if execution is concurrent
                         if (!entry.isConcurrent()) {
 
@@ -165,6 +181,7 @@ module.exports = {
                         } else {
                             //fetch data and prepare ffmpeg
                             var profiles = [];
+                            var keepAlive = false;
 
                             flavors.forEach(function(flavor) {
                                 var profile = flavor.preset;
@@ -175,6 +192,10 @@ module.exports = {
                                 }
                                 if (flavor.hasStream() && flavor.stream !== null) {
                                     output = flavor.stream.url;
+                                    //check for keepAlive on output stream
+                                    if (flavor.stream.keepAlive) {
+                                        keepAlive = true;
+                                    }
                                 }
 
                                 profile.output = output;
@@ -183,14 +204,83 @@ module.exports = {
                                 profiles.push(profile);
                             });
 
-                            FFmpegService.process(source, profiles, function(res) {
-                                sails.log.debug(res);
-                            });
+                            sails.log.debug("profiles ");
+                            sails.log.debug(profiles);
+                            if (profiles.length > 0) {
+                                FFmpegService.process('entry-' + entry.id, source, profiles, function(res) {
+                                    if (res === 'start') {
+                                    } else if (res === 'end') {
+                                        entry.status = 'done';
+                                        Entry.signal(entry.id, entry.status);
+                                    } else if (res === 'running') {
+                                        //fix status
+                                        entry.status = 'processing';
+                                        Entry.signal(entry.id, entry.status);
+                                    } else {
+                                        //error
+                                        sails.log.debug(res);
+                                        if (keepAlive) {
+                                            //wait 2s
+                                            setTimeout(function() {
+                                                Entry.get(id, function(err3, entry) {
+                                                    if (entry.isProcessing()) {
+                                                        //reset state to ready and restart
+                                                        entry.status = 'ready';
+                                                        Entry.signal(entry.id, entry.status, function(e) {
+                                                            sails.log.debug("keepAlive, call process again");
+                                                            Entry.process(entry.id, function() {
+                                                            });
+                                                        });
+                                                    }
+                                                });
+                                            }, 2000);
+
+
+                                        } else {
+                                            //save error
+                                            entry.status = 'error';
+                                            Entry.signal(entry.id, entry.status);
+                                        }
+
+
+
+                                    }
+                                });
+                            } else {
+                                //error no flavor available
+                                entry.status = 'error';
+                                Entry.signal(entry.id, entry.status);
+                            }
                         }
                     });
                 }
 
                 cb(null, entry);
+            } else {
+                cb(err, null);
+            }
+        });
+
+    },
+    stop: function(id, cb) {
+        Entry.get(id, function(err, entry) {
+            if (!err && entry) {
+                if (entry.isProcessing()) {
+                    //stop
+                    FFmpegService.stop('entry-' + entry.id, function(res) {
+                        sails.log.debug(res);
+                    });
+
+
+
+                }
+
+                //reset status 
+                entry.status = 'ready';
+                //update status
+                Entry.signal(entry.id, entry.status);
+                cb(null, entry);
+
             } else {
                 cb(err, null);
             }

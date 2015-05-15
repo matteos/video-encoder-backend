@@ -11,7 +11,30 @@
 
 module.exports.bootstrap = function(cb) {
 
-  // It's very important to trigger this callback method when you are finished
-  // with the bootstrap!  (otherwise your server will never lift, since it's waiting on the bootstrap)
-  cb();
+
+    Entry.find().exec(function(err, list) {
+        if (!err && list) {
+            //check status and start if needed
+            list.forEach(function(entry) {
+                sails.log.debug("check entry " + entry.id + " status " + entry.status);
+                if (entry.isProcessing()) {
+                    sails.log.debug("resume processing " + entry.id);
+                    //reset state to ready and restart
+                    entry.status = 'ready';
+                    Entry.signal(entry.id, entry.status, function() {
+                        sails.log.debug("call process again");
+                        setTimeout(function() {
+                            Entry.process(entry.id, function() {
+                            });
+                        }, 1500);
+                    });
+
+                }
+            });
+        }
+    });
+
+    // It's very important to trigger this callback method when you are finished
+    // with the bootstrap!  (otherwise your server will never lift, since it's waiting on the bootstrap)
+    cb();
 };

@@ -9,98 +9,135 @@ var ffmpeg = require('fluent-ffmpeg');
 
 // FFmpegService.js - in api/services
 module.exports = {
-    process: function(source, profiles, callback) {
-        sails.log.debug('callffmpeg process for ' + source);
-        sails.log.debug(profiles);
-        var command = ffmpeg(source);
+    processes: {},
+    counters: {},
+    /*
+     * methods
+     */
+    isRunning: function(name) {
+//        sails.log.debug("isRunning");
+//        sails.log.debug(Object.keys(FFmpegService.processes));
+        
+        return FFmpegService.processes.hasOwnProperty(name);
+    },
+    process: function(id, source, profiles, callback) {
+        if (!FFmpegService.isRunning(id)) {
+            sails.log.debug('callffmpeg process for ' + source);
+            sails.log.debug(profiles);
+            var command = ffmpeg(source);
 
-        //parse input options, all applied to command
-        var inputOptions = [];
-        var nativeFramerate = false;
-        profiles.forEach(function(profile) {
-            if (profile.inputOptions !== '') {
-                inputOptions.push(profile.inputOptions);
-            }
-            if (profile.nativeFramerate === true) {
-                nativeFramerate = true;
-            }
-        });
-        command.inputOptions(inputOptions);
+            //parse input options, all applied to command
+            var inputOptions = [];
+            var nativeFramerate = false;
+            profiles.forEach(function(profile) {
+                if (profile.inputOptions !== '') {
+                    inputOptions.push(profile.inputOptions);
+                }
+                if (profile.nativeFramerate === true) {
+                    nativeFramerate = true;
+                }
+            });
+            command.inputOptions(inputOptions);
 
-        //set native framerate reading if required
-        if (nativeFramerate) {
-            command.native();
+            //set native framerate reading if required
+            if (nativeFramerate) {
+                command.native();
+            }
+
+            //add outputs
+            profiles.forEach(function(profile) {
+                command.output(profile.output);
+                if (profile.format !== '') {
+                    command.format(profile.format);
+                }
+                command.outputOptions(profile.ffmpegOptions);
+
+                if (profile.videoCodec !== '') {
+                    var width = (profile.videoWidth === 0) ? '?' : profile.videoWidth;
+                    var height = (profile.videoHeight === 0) ? '?' : profile.videoHeight;
+                    var size = width + 'x' + height;
+
+                    command.videoCodec(profile.videoCodec);
+
+                    if (profile.videoCodec !== 'copy') {
+                        command
+                                .videoBitrate(profile.videoBitrate + 'k')
+                                .size(size);
+
+                        if (profile.videoFilters !== '') {
+                            command.videoFilters(profile.videoFilters);
+                        }
+                    }
+
+                } else {
+                    command.noVideo();
+                }
+
+
+                if (profile.audioCodec !== '') {
+                    command.audioCodec(profile.audioCodec);
+
+
+                    if (profile.audioCodec !== 'copy') {
+                        command
+                                .audioBitrate(profile.audioBitrate)
+                                .audioChannels(profile.audioChannels)
+                                .audioFrequency(profile.audioFrequency);
+
+                        if (profile.audioFilters !== '') {
+                            command.audioFilters(profile.audioFilters);
+                        }
+                    }
+                } else {
+                    command.noAudio();
+                }
+
+            });
+
+            //event handlers
+            command
+                    .on('start', function(commandLine) {
+                        sails.log.debug('Spawned Ffmpeg with command: ' + commandLine);
+
+                        //add to processes
+                        FFmpegService.processes[id] = command;
+
+                        callback('start');
+                    })
+                    .on('error', function(err, stdout, stderr) {
+                        sails.log.debug('Cannot process video: ' + err.message);
+
+                        //remove from processes
+                        delete FFmpegService.processes[id];
+
+                        callback('error');
+                    })
+                    .on('end', function() {
+                        sails.log.debug('Transcoding succeeded !');
+
+                        //remove from processes
+                        delete FFmpegService.processes[id];
+
+                        callback('done');
+                    });
+
+            //run
+            command.run();
+
+
+        } else {
+            sails.log.debug("already running");
+            callback("running");
         }
+    },
+    stop: function(id, callback) {
+        sails.log.debug('callffmpeg stop');
+        if (FFmpegService.isRunning(id)) {
+            var command = FFmpegService.processes[id];
+            command.kill('SIGTERM');
 
-        //add outputs
-        profiles.forEach(function(profile) {
-            command.output(profile.output);
-            if (profile.format !== '') {
-                command.format(profile.format);
-            }
-            command.outputOptions(profile.ffmpegOptions);
-
-            if (profile.videoCodec !== '') {
-                var width = (profile.videoWidth === 0) ? '?' : profile.videoWidth;
-                var height = (profile.videoHeight === 0) ? '?' : profile.videoHeight;
-                var size = width + 'x' + height;
-
-                command.videoCodec(profile.videoCodec);
-
-                if (profile.videoCodec !== 'copy') {
-                    command
-                            .videoBitrate(profile.videoBitrate + 'k')
-                            .size(size);
-
-                    if (profile.videoFilters !== '') {
-                        command.videoFilters(profile.videoFilters);
-                    }
-                }
-
-            } else {
-                command.noVideo();
-            }
-
-
-            if (profile.audioCodec !== '') {
-                command.audioCodec(profile.audioCodec);
-
-
-                if (profile.audioCodec !== 'copy') {
-                    command
-                            .audioBitrate(profile.audioBitrate)
-                            .audioChannels(profile.audioChannels)
-                            .audioFrequency(profile.audioFrequency);
-
-                    if (profile.audioFilters !== '') {
-                        command.audioFilters(profile.audioFilters);
-                    }
-                }
-            } else {
-                command.noAudio();
-            }
-
-        });
-
-        //event handlers
-        command
-                .on('start', function(commandLine) {
-                    sails.log.debug('Spawned Ffmpeg with command: ' + commandLine);
-                })
-                .on('error', function(err, stdout, stderr) {
-                    sails.log.debug('Cannot process video: ' + err.message);
-                    callback('error');
-                })
-                .on('end', function() {
-                    sails.log.debug('Transcoding succeeded !');
-                    callback('done');
-                });
-
-        //run
-        command.run();
-
-
-
+        }
+        callback("done");
     },
     probe: function(uri, callback) {
         sails.log.debug('callffmpeg probe');

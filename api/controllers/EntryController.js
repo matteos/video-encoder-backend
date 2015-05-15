@@ -165,6 +165,28 @@ module.exports = {
         });
 
     },
+    status: function(req, res) {
+        var id = req.param('id', "");
+        Entry.status(id, function(err, status) {
+            if (!err && status) {
+                res.send(status);
+            } else {
+                res.send(500);
+            }
+        });
+
+    },
+    stop: function(req, res) {
+        var id = req.param('id', "");
+        Entry.stop(id, function(err, entry) {
+            if (!err && entry) {
+                res.send(200);
+            } else {
+                res.send(500);
+            }
+        });
+
+    },
 //    source: function(req, res) {
 //        var id = req.param('id', "");
 //        Entry.findOne(id).exec(function(err, entry) {
