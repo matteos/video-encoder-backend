@@ -48,7 +48,7 @@ module.exports = {
         /*
          * Methods
          */
-        //DISABLED LOSES ASSOCIATIONS
+        //DISABLED: LOSES ASSOCIATIONS
         //needs to update only fields
 //        update: function(cb) {
 //            var id = this.id;

@@ -12,6 +12,22 @@
 module.exports.bootstrap = function(cb) {
 
 
+    //scheduling
+    Schedule.find().exec(function(err, list) {
+        if (!err && list) {
+            //add each schedule to scheduler if not in the past
+            var now = new Date();
+            list.forEach(function(schedule) {
+                var start = new Date(Date.parse(schedule.dateStart));
+                if (start > now && schedule.isScheduled()) {
+                    Schedule.schedule(schedule.id, function(err, s) {
+                    });
+                }
+            });
+        }
+    });
+
+    //entries
     Entry.find().exec(function(err, list) {
         if (!err && list) {
             //check status and start if needed
