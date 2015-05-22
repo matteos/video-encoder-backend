@@ -17,7 +17,7 @@ module.exports = {
     isRunning: function(name) {
 //        sails.log.debug("isRunning");
 //        sails.log.debug(Object.keys(FFmpegService.processes));
-        
+
         return FFmpegService.processes.hasOwnProperty(name);
     },
     process: function(id, source, profiles, callback) {
@@ -31,7 +31,8 @@ module.exports = {
             var nativeFramerate = false;
             profiles.forEach(function(profile) {
                 if (profile.inputOptions !== '') {
-                    inputOptions.push(profile.inputOptions);
+                    var options = profile.inputOptions.split(";");   
+                    inputOptions.push(options);
                 }
                 if (profile.nativeFramerate === true) {
                     nativeFramerate = true;
@@ -47,10 +48,9 @@ module.exports = {
             //add outputs
             profiles.forEach(function(profile) {
                 command.output(profile.output);
-                if (profile.format !== '') {
-                    command.format(profile.format);
-                }
-                command.outputOptions(profile.ffmpegOptions);
+                
+                var options = profile.ffmpegOptions.split(";");                               
+                command.outputOptions(options);
 
                 if (profile.videoCodec !== '') {
                     var width = (profile.videoWidth === 0) ? '?' : profile.videoWidth;
@@ -90,6 +90,10 @@ module.exports = {
                     }
                 } else {
                     command.noAudio();
+                }
+
+                if (profile.format !== '') {
+                    command.format(profile.format);
                 }
 
             });
@@ -134,7 +138,7 @@ module.exports = {
         sails.log.debug('callffmpeg stop');
         if (FFmpegService.isRunning(id)) {
             var command = FFmpegService.processes[id];
-            command.kill('SIGTERM');
+            command.kill('SIGKILL');
 
         }
         callback("done");
