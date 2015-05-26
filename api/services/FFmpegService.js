@@ -68,7 +68,7 @@ module.exports = {
                                 .size(size);
 
                         if (profile.videoFilters !== '') {
-                            command.videoFilters(profile.videoFilters);
+                            command.videoFilters(profile.videoFilters.split(";"));
                         }
                     }
 
