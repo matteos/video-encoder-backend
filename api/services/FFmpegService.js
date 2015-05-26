@@ -31,8 +31,11 @@ module.exports = {
             var nativeFramerate = false;
             profiles.forEach(function(profile) {
                 if (profile.inputOptions !== '') {
-                    var options = profile.inputOptions.split(";");   
-                    inputOptions.push(options);
+                    var options = profile.inputOptions.split(";");
+                    options.forEach(function(o) {
+                        inputOptions.push(o);
+                    });
+
                 }
                 if (profile.nativeFramerate === true) {
                     nativeFramerate = true;
@@ -48,8 +51,8 @@ module.exports = {
             //add outputs
             profiles.forEach(function(profile) {
                 command.output(profile.output);
-                
-                var options = profile.ffmpegOptions.split(";");                               
+
+                var options = profile.ffmpegOptions.split(";");
                 command.outputOptions(options);
 
                 if (profile.videoCodec !== '') {

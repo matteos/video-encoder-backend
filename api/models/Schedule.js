@@ -68,13 +68,16 @@ module.exports = {
         Schedule.findOne(id).exec(function(err, schedule) {
             if (!err && schedule) {
                 sails.log.debug("schedule event " + id);
-
+                var now = new Date();
                 var start = new Date(Date.parse(schedule.dateStart));
                 var end = new Date(Date.parse(schedule.dateEnd));
 
-                ScheduleService.schedule(id, start, end);
-                schedule.status = 'scheduled';
-                Schedule.signal(schedule.id, schedule.status);
+                //check start date > now
+                if (start > now) {
+                    ScheduleService.schedule(id, start, end);
+                    schedule.status = 'scheduled';
+                    Schedule.signal(schedule.id, schedule.status);
+                }
                 cb(null, schedule);
             } else {
                 cb(err, null);

@@ -5,6 +5,7 @@
  * @help        :: See http://links.sailsjs.org/docs/controllers
  */
 var fs = require('fs');
+var _ = require('lodash');
 
 module.exports = {
     /*
@@ -17,7 +18,14 @@ module.exports = {
 //        res.send(entry);
 //    },
     add: function(req, res) {
-        sails.log.debug("entry add");
+        var json = req.body;
+        json.forEach(function(j) {
+            Entry.create(j).exec(function(err, entry) {
+                sails.log.debug("created entry " + entry.id);
+            });
+        });
+
+        res.send(200);
 
     },
     get: function(req, res) {
@@ -29,6 +37,36 @@ module.exports = {
                 res.send(404);
             }
         });
+
+    },
+    detail: function(req, res) {
+        var id = req.param('id', "");
+        Entry.findOne(id)
+                .populateAll()
+                .then(function(entry) {
+                    var flavorStreams = Stream.find({
+                        id: _.pluck(entry.flavors, 'stream')
+                                //_.pluck: Retrieves the value of a 'user' property from all elements in the post.comments collection.
+                    })
+                            .then(function(flavorStreams) {
+                                return flavorStreams;
+                            });
+                    return [entry, flavorStreams];
+                })
+                .spread(function(entry, flavorStreams) {
+                    var flavorStreams = _.indexBy(flavorStreams, 'id');
+                    //_.indexBy: Creates an object composed of keys generated from the results of running each element of the collection through the given callback. The corresponding value of each key is the last element responsible for generating the key
+                    entry.flavors = _.map(entry.flavors, function(flavor) {
+                        flavor.stream = flavorStreams[flavor.stream];
+                        return flavor;
+                    });
+                    res.json(entry);
+                })
+                .catch(function(err) {
+                    if (err) {
+                        return res.serverError(err);
+                    }
+                });
 
     },
     //WILL OVERRIDE BLUEPRINT
