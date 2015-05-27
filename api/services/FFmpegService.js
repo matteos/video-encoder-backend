@@ -125,7 +125,7 @@ module.exports = {
                         //remove from processes
                         delete FFmpegService.processes[id];
 
-                        callback('done');
+                        callback('end');
                     });
 
             //run

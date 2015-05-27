@@ -15,7 +15,8 @@ module.exports = {
         },
         status: {
             type: 'string',
-            enum: ['ready', 'error', 'processing', 'queued']
+            enum: ['ready', 'error', 'processing', 'queued', 'done'],
+            defaultsTo: 'ready'
         },
         type: {
             type: 'string',
@@ -62,6 +63,16 @@ module.exports = {
             return this.status === 'queued';
         }
     },
+    signal: function(id, status, cb) {
+        Flavor.update(id, {status: status}).exec(function(err, e) {
+            if (typeof (cb) !== 'undefined') {
+                cb(err, e);
+            } else {
+                return e;
+            }
+
+        });
+    },
     status: function(id, cb) {
         Flavor.findOne(id).exec(function(err, flavor) {
             if (!err && flavor) {
@@ -86,12 +97,15 @@ module.exports = {
                         sails.log.debug("process flavor " + id + " source " + source);
                         var profile = flavor.preset;
 
+                        var relay = null;
+
                         var output = "";
                         if (flavor.hasFile() && flavor.file !== null) {
                             output = flavor.file.path();
                         }
                         if (flavor.hasStream() && flavor.stream !== null) {
                             output = flavor.stream.url;
+                            relay = flavor.stream;
                         }
 
                         profile.output = output;

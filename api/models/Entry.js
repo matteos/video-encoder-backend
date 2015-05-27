@@ -45,6 +45,10 @@ module.exports = {
             type: 'boolean',
             defaultsTo: false
         },
+        relay: {
+            type: 'boolean',
+            defaultsTo: false
+        },
         /*
          * Methods
          */
@@ -88,6 +92,9 @@ module.exports = {
         },
         isConcurrent: function() {
             return this.concurrent;
+        },
+        isRelay: function() {
+            return this.relay;
         }
     },
     /*
@@ -183,6 +190,8 @@ module.exports = {
                             var profiles = [];
                             var keepAlive = false;
 
+                            var relays = [];
+
                             flavors.forEach(function(flavor) {
                                 var profile = flavor.preset;
 
@@ -196,9 +205,15 @@ module.exports = {
                                     if (flavor.stream.keepAlive) {
                                         keepAlive = true;
                                     }
+                                    if (entry.isRelay()) {
+                                        relays.push(flavor.stream);
+                                    }
+
                                 }
 
                                 profile.output = output;
+
+
 
                                 //add to list
                                 profiles.push(profile);
@@ -209,16 +224,50 @@ module.exports = {
                             if (profiles.length > 0) {
                                 FFmpegService.process('entry-' + entry.id, source, profiles, function(res) {
                                     if (res === 'start') {
-                                    } else if (res === 'end') {
-                                        entry.status = 'done';
-                                        Entry.signal(entry.id, entry.status);
-                                    } else if (res === 'running') {
-                                        //fix status
+                                        //update status
                                         entry.status = 'processing';
                                         Entry.signal(entry.id, entry.status);
+
+                                        flavors.forEach(function(flavor) {
+                                            //signal status
+                                            flavor.status = 'processing';
+                                            Flavor.signal(flavor.id, flavor.status);
+                                        });
+
+                                        relays.forEach(function(relay) {
+                                            Entry.find({stream: relay.id}).exec(function(err3, list) {
+                                                list.forEach(function(e) {
+                                                    Entry.process(e.id, function(err4, ee) {
+                                                    });
+                                                });
+                                            });
+                                        });
+
+                                    } else if (res === 'end') {
+                                        sails.log.debug("entry end");
+                                        //update status
+                                        entry.status = 'done';
+                                        Entry.signal(entry.id, entry.status);
+
+                                        flavors.forEach(function(flavor) {
+                                            //signal status
+                                            flavor.status = 'done';
+                                            Flavor.signal(flavor.id, flavor.status);
+                                        });
+
+
+                                        relays.forEach(function(relay) {
+                                            Entry.find({stream: relay.id}).exec(function(err3, list) {
+                                                list.forEach(function(e) {
+                                                    Entry.stop(e.id, function(err4, ee) {
+                                                    });
+                                                });
+                                            });
+                                        });
                                     } else {
                                         //error
                                         sails.log.debug(res);
+
                                         if (keepAlive) {
                                             //wait 2s
                                             setTimeout(function() {
@@ -231,6 +280,22 @@ module.exports = {
                                                             Entry.process(entry.id, function() {
                                                             });
                                                         });
+                                                    } else {
+                                                        flavors.forEach(function(flavor) {
+                                                            //signal status
+                                                            flavor.status = 'done';
+                                                            Flavor.signal(flavor.id, flavor.status);
+                                                        });
+
+                                                        //stop relays
+                                                        relays.forEach(function(relay) {
+                                                            Entry.find({stream: relay.id}).exec(function(err3, list) {
+                                                                list.forEach(function(e) {
+                                                                    Entry.stop(e.id, function(err4, ee) {
+                                                                    });
+                                                                });
+                                                            });
+                                                        });
                                                     }
                                                 });
                                             }, 2000);
@@ -240,6 +305,21 @@ module.exports = {
                                             //save error
                                             entry.status = 'error';
                                             Entry.signal(entry.id, entry.status);
+                                            flavors.forEach(function(flavor) {
+                                                //signal status
+                                                flavor.status = 'error';
+                                                Flavor.signal(flavor.id, flavor.status);
+                                            });
+
+                                            //stop relays
+                                            relays.forEach(function(relay) {
+                                                Entry.find({stream: relay.id}).exec(function(err3, list) {
+                                                    list.forEach(function(e) {
+                                                        Entry.stop(e.id, function(err4, ee) {
+                                                        });
+                                                    });
+                                                });
+                                            });
                                         }
 
 
